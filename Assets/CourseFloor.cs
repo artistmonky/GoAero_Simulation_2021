@@ -3,35 +3,41 @@ using UnityEngine;
 [RequireComponent(typeof(Reflectivity))]
 public class CourseFloor : MonoBehaviour
 {
-    // Object Dimensions and Position in Meters
-/*    static float floorWidth = environmentData.course3Width; // Right is in +x direction
-    static float floorDepth = environmentData.course3Depth; // Depth increases in +z direction*/
     Vector3 floorPosition;
     float floorWidth; // Right is in +x direction
     float floorDepth; // Forward is in +z direction
 
-    // Start is called once before the first execution of Update after the MonoBehaviour is created
     void Start()
     {
         this.name = "Course Floor";
 
-        floorWidth = environmentData.course3Width / 10; // Scale down from meters to default plane size (10x10)
-        floorDepth = environmentData.course3Depth / 10; 
-        floorPosition = new Vector3(environmentData.course3Width / 2, 0, environmentData.course3Depth / 2);
+        floorWidth = environmentData.course3Width / 10f; // Convert meters to Unity plane scale
+        floorDepth = environmentData.course3Depth / 10f;
+        floorPosition = new Vector3(environmentData.course3Width / 2f, 0f, environmentData.course3Depth / 2f);
         this.transform.position = floorPosition;
 
         // Define plane
         GameObject courseFloor = GameObject.CreatePrimitive(PrimitiveType.Plane);
-        courseFloor.AddComponent<Reflectivity>().reflectivity = 20f;
         courseFloor.name = "Course Floor";
         courseFloor.transform.SetParent(this.transform);
-        courseFloor.transform.localPosition = new Vector3(0, 0, 0);
+        courseFloor.transform.localPosition = Vector3.zero;
         courseFloor.transform.localScale = new Vector3(floorWidth, 1, floorDepth);
+
+        // Add Reflectivity
+        Reflectivity reflect = courseFloor.AddComponent<Reflectivity>();
+        reflect.reflectivity = 20f;
+
+        // Add Rigidbody (set up as a static body)
+        Rigidbody rb = courseFloor.AddComponent<Rigidbody>();
+        rb.useGravity = false;
+        rb.isKinematic = true; // So it doesn't move, but still participates in collision
+
+        // Optional: freeze all constraints explicitly
+        rb.constraints = RigidbodyConstraints.FreezeAll;
     }
 
-    // Update is called once per frame
     void Update()
     {
-        
+        // No logic here currently
     }
 }

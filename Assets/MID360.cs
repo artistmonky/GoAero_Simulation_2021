@@ -192,10 +192,11 @@ public class MID360 : MonoBehaviour
         visualizeOn = false;
 
         // Set position
-        Vector3 position = // new Vector3(0, (float)60.10 / 1000 / 2, 1);
-        new Vector3(environmentData.course3Width / 2,
-                   (float)60.10 / 1000 / 2,
-                   2 * environmentData.obstacleDepthSpacing - 3);
+        //Vector3 position = // new Vector3(0, (float)60.10 / 1000 / 2, 1);
+        //new Vector3(environmentData.course3Width / 2,
+        //           (float)60.10 / 1000 / 2,
+        //           2 * environmentData.obstacleDepthSpacing - 3);
+        Vector3 position = new Vector3(0, 1, 1);
         this.transform.position = position;
         // TODO: Set rotation if needed
 
@@ -216,7 +217,6 @@ public class MID360 : MonoBehaviour
         angleSigma = 0.15f;
         distanceSigma = 0.03f;
         totalSections = azimuthSteps * elevationSteps / rayCount;
-        rayGrid = new LidarRayGrid(azimuthSteps, elevationSteps, maxElevation, minElevation, Allocator.Persistent);
         inputDirections = new NativeArray<Vector3>(rayCount, Allocator.Persistent);
         distanceNoises = new NativeArray<float>(rayCount, Allocator.Persistent);
         masterSeed = (uint)UnityEngine.Random.Range(int.MinValue, int.MaxValue);
@@ -267,6 +267,8 @@ public class MID360 : MonoBehaviour
         meshRenderer.sharedMaterials = sourceRenderer.sharedMaterials;
 
         Debug.Log("MID360 model loaded and applied to existing GameObject.");
+
+        // 
 
         // Initialize the list of active markers
         if (visualizeOn) activeMarkers = new List<GameObject>();
@@ -334,7 +336,7 @@ public class MID360 : MonoBehaviour
         raycastHandle = RaycastCommand.ScheduleBatch(rayCommands, rayHits, 32, rayGenHandle);
 
         float t1 = Time.realtimeSinceStartup;
-        Debug.Log($"Update excuted in {(t1 - t0) * 1000f:F3} ms");
+        //Debug.Log($"Update excuted in {(t1 - t0) * 1000f:F3} ms");
     }
 
     void LateUpdate()
@@ -389,7 +391,7 @@ public class MID360 : MonoBehaviour
 
         section = section % totalSections + 1;
         float t1 = Time.realtimeSinceStartup;
-        Debug.Log($"LateUpdate executed in {(t1 - t0) * 1000f:F3} ms");
+        //Debug.Log($"LateUpdate executed in {(t1 - t0) * 1000f:F3} ms");
     }
 
     void OnDestroy()
