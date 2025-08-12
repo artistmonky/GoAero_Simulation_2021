@@ -1,16 +1,18 @@
 using System.Collections;
 using UnityEngine;
+using System.IO; // For CSV logging
 
 [RequireComponent(typeof(Rigidbody))]
 public class ICM40609D_IMU : MonoBehaviour
-{
-    private float imuDt;
+{    
     private float previousRealTime;
+    private float currentRealTime;
     private Rigidbody imu;
 
     [Header("IMU Settings")]
-    public float imuUpdateRate; // Hz
-    public int upSamplingFactor; // How many times to sample the IMU per physics step
+    public float imuUpdateRate; // ideal IMU update rate in Hz
+    public float imuDt; // ideal time step between IMU updates, equal to 1 / imuUpdateRate
+
 
     [Header("Kinematics")]
     public Vector3 currentAcceleration;
@@ -19,59 +21,53 @@ public class ICM40609D_IMU : MonoBehaviour
     private Vector3 currentVelocity;
     private Vector3 lastVelocity;
 
+    private StreamWriter imuWriter;
+    private string imuLogPath;
+
     void Start()
     {
         imu = GetComponent<Rigidbody>();
         imu.useGravity = true;
 
         imuUpdateRate = 200;
-        upSamplingFactor = Mathf.FloorToInt(imuUpdateRate / environmentData.simRate);
         imuDt = 1f / imuUpdateRate;
+
         Debug.Log($"IMU Update Rate: {imuUpdateRate} Hz, dt: {imuDt:F5}s");
 
         lastVelocity = imu.velocity;
         previousRealTime = Time.realtimeSinceStartup;
+
+        // Set up CSV logging
+        imuLogPath = Path.Combine(Application.persistentDataPath, "imu_log.csv");
+        imuWriter = new StreamWriter(imuLogPath, false);
+        imuWriter.WriteLine("Time,AccelX,AccelY,AccelZ,GyroX,GyroY,GyroZ");
+
         StartCoroutine(IMULoop());
     }
 
     IEnumerator IMULoop()
     {
-        // Stuff outside this while loop gets executed once at the start of the coroutine
-        while (true)
+        while (true) //TODO: ARE WE USING REAL TIME OR SIM TIME FOR TIMESTAMPS?
         {
-            // Stuff in this while loop gets executed every frame
+            currentRealTime = Time.realtimeSinceStartup;
 
-            // 1. Get time change since last physics step
-            float currentRealTime = Time.realtimeSinceStartup;
-            Debug.Log($"Current real time is: {currentRealTime:F5}s");
-            float realDeltaTime = currentRealTime - previousRealTime;
-            Debug.Log($"deltaTime is: {realDeltaTime:F5}s");
-
-            // 2. Fetch current state from Rigidbody
             currentVelocity = imu.velocity;
-            
-            // 2. Compare to last state. Calculate acceleration and retrieve angular rates
             currentAcceleration = ((currentVelocity - lastVelocity) / Time.fixedDeltaTime) + Physics.gravity;
+            currentAcceleration = imu.transform.InverseTransformDirection(currentAcceleration);
+
             currentAngularRate = imu.angularVelocity;
+            currentAngularRate = imu.transform.InverseTransformDirection(currentAngularRate);
 
-            // 3. Emit IMU data at the specified rate, which is > physics update rate
-            float simulatedIMUTimestamp = currentRealTime;
-            float t = realDeltaTime;
-
-            for (int i = 0; i < upSamplingFactor; ++i)
+            float simulatedIMUTimestamp = previousRealTime;
+            while (simulatedIMUTimestamp < currentRealTime)
             {
+                imuWriter.WriteLine($"{simulatedIMUTimestamp:F6}," +
+                                    $"{currentAcceleration.x:F6},{currentAcceleration.y:F6},{currentAcceleration.z:F6}," +
+                                    $"{currentAngularRate.x:F6},{currentAngularRate.y:F6},{currentAngularRate.z:F6}");
 
+                simulatedIMUTimestamp += imuDt;
             }
 
-            while (t >= imuDt)
-            {
-                simulatedIMUTimestamp += realDeltaTime / upSamplingFactor;
-                // TODO: Apply noise / apply and update random walk
-                Debug.Log($"[IMU @ {simulatedIMUTimestamp:F5}s] Accel: {currentAcceleration:F3}, Gyro: {currentAngularRate:F3}");
-                t -= imuDt;
-            }
-
-            // 4. Store current state as last state for next iteration
             lastVelocity = currentVelocity;
             previousRealTime = currentRealTime;
             yield return null;
@@ -83,5 +79,13 @@ public class ICM40609D_IMU : MonoBehaviour
         imu.AddForce(-Physics.gravity, ForceMode.Acceleration);
     }
 
-
+    void OnApplicationQuit()
+    {
+        if (imuWriter != null)
+        {
+            imuWriter.Flush();
+            imuWriter.Close();
+            Debug.Log($"IMU data saved to {imuLogPath}");
+        }
+    }
 }

@@ -30,6 +30,8 @@ public class MID360 : MonoBehaviour
     [BurstCompile]
     struct PostRaycastProcessingJob : IJobParallelFor
     {
+        [ReadOnly] public quaternion invLidarRot;
+        [ReadOnly] public float3 lidarPosition;
         [ReadOnly] public NativeArray<RaycastHit> hits;
         [ReadOnly] public NativeArray<RaycastCommand> commands;
         [ReadOnly] public NativeArray<float> distanceNoises;
@@ -53,7 +55,18 @@ public class MID360 : MonoBehaviour
             {
                 float3 offset = commands[i].direction * distanceNoises[i];
                 float3 noisyPoint = (float3)hit.point + offset;
-                outputPoints.AddNoResize(noisyPoint);
+
+                // 1. Subtract the lidar origiN from the noisy point to get the vector (lidar -> noisy point), expressed in world frame
+                // TODO: Make sure that lidarPosition is the origin point of the lidar ray pattern
+                float3 vectorFromLidar = noisyPoint - lidarPosition;
+
+                // 2. Rotate that vector by the inverse of the lidar's quaternion rotation. vector (lidar -> noisy point) is now in lidar frame
+                float3 temp = math.mul(invLidarRot, vectorFromLidar);
+
+                // 3. Convert the point from Unity's left handed coordinate system to LIVOX's right handed coordinate system
+                float3 noisyPointInLidarFrame = new float3(temp.z, temp.x, temp.y);
+
+                outputPoints.AddNoResize(noisyPointInLidarFrame);
             }
         }
 
@@ -151,6 +164,7 @@ public class MID360 : MonoBehaviour
     public string modelPath;
     List<GameObject> activeMarkers;
     [Header("LiDAR Settings")]
+    public float3 originOffset = new float3(0, 0.17f, 0); // Offset from the lidar's center to the point where rays are emitted
     public int azimuthSteps = 360;
     public int elevationSteps = 40;
     public float maxElevation = 55.22f;
@@ -173,6 +187,7 @@ public class MID360 : MonoBehaviour
 
     [Header("Debug")]
     public uint masterSeed;
+    public bool pointLoggingOn; // Set this to true to turn on point logging to a csv file
     public bool visualizeOn; // Set this to true to turn on the visualization of lidar hit points
 
     NativeArray<float> distanceNoises;
@@ -190,17 +205,20 @@ public class MID360 : MonoBehaviour
     void Start()
     {
         visualizeOn = false;
+        pointLoggingOn = true;
+        Debug.Log("Visualization: " + visualizeOn + "\n pointLogging: " + pointLoggingOn);
 
         // Set position
-        //Vector3 position = // new Vector3(0, (float)60.10 / 1000 / 2, 1);
-        //new Vector3(environmentData.course3Width / 2,
-        //           (float)60.10 / 1000 / 2,
-        //           2 * environmentData.obstacleDepthSpacing - 3);
-        Vector3 position = new Vector3(0, 1, 1);
+        Vector3 position = // new Vector3(0, (float)60.10 / 1000 / 2, 1);
+                            new Vector3(environmentData.course3Width / 2,
+                                       (float)60.10 / 1000 / 2,
+                                       2 * environmentData.obstacleDepthSpacing - 3);
+        //Vector3 position = new Vector3(0, 1, 1);
         this.transform.position = position;
         // TODO: Set rotation if needed
 
         // Initialize Lidar Grid Constants
+        originOffset = new float3(0, 0.17f, 0);
         azimuthSteps = 360;
         elevationSteps = 40; // Number of lidar rays in each vertical line, as per datasheet
         shrinkage = 1.72f;
@@ -221,7 +239,7 @@ public class MID360 : MonoBehaviour
         distanceNoises = new NativeArray<float>(rayCount, Allocator.Persistent);
         masterSeed = (uint)UnityEngine.Random.Range(int.MinValue, int.MaxValue);
 
-        // Create hashmap for fast object reflectiviy lookup
+        // Create hashmap for fast reflectiviy lookup
         var reflectives = GameObject.FindObjectsOfType<Reflectivity>();
         reflectivityMap = new NativeParallelHashMap<int, float>(reflectives.Length, Allocator.Persistent);
 
@@ -239,36 +257,42 @@ public class MID360 : MonoBehaviour
         acceptedPoints = acceptedPointsList.AsParallelWriter();
 
         // Load mesh and material from the imported .obj
-        modelPath = "Models/mid-360-asm";
-        GameObject loadedModel = Resources.Load<GameObject>(modelPath);
-        if (loadedModel == null)
-        {
+        //TODO: Ensure that model is rotated correctly
+       modelPath = "Models/mid-360-asm";
+       GameObject loadedModel = Resources.Load<GameObject>(modelPath);
+       if (loadedModel == null)
+       {
             Debug.LogError("Failed to load model from path: " + modelPath + ". Make sure the .obj was imported and placed in a Resources folder.");
             return;
-        }
+       }
 
         // Get components from the loaded prefab
         MeshFilter sourceMeshFilter = loadedModel.GetComponentInChildren<MeshFilter>();
         MeshRenderer sourceRenderer = loadedModel.GetComponentInChildren<MeshRenderer>();
-
         if (sourceMeshFilter == null || sourceRenderer == null)
         {
             Debug.LogError("Loaded model is missing MeshFilter or MeshRenderer.");
             return;
         }
 
-        // Add or replace mesh and renderer on this object
-        MeshFilter meshFilter = gameObject.GetComponent<MeshFilter>();
-        if (meshFilter == null) meshFilter = gameObject.AddComponent<MeshFilter>();
-        meshFilter.sharedMesh = sourceMeshFilter.sharedMesh;
+        // --- Instantiate model as a child and rotate it 90° about Y ---
+        const string childName = "MID360_Model";
 
-        MeshRenderer meshRenderer = gameObject.GetComponent<MeshRenderer>();
-        if (meshRenderer == null) meshRenderer = gameObject.AddComponent<MeshRenderer>();
-        meshRenderer.sharedMaterials = sourceRenderer.sharedMaterials;
+        // If an old child exists, clear it to avoid stale/empty objects
+        var old = transform.Find(childName);
+        if (old) Destroy(old.gameObject);
 
-        Debug.Log("MID360 model loaded and applied to existing GameObject.");
+        // Make a fresh instance of the loaded prefab under this object
+        var modelInstance = Instantiate(loadedModel, transform);
+        modelInstance.name = childName;
 
-        // 
+        // Reset local transform and rotate +90° Y
+        var t = modelInstance.transform;
+        t.localPosition = Vector3.zero;
+        t.localRotation = Quaternion.Euler(0f, 270f, 0f);
+        t.localScale = Vector3.one;
+
+        Debug.Log("MID360 model instantiated as child and rotated +90° about Y.");
 
         // Initialize the list of active markers
         if (visualizeOn) activeMarkers = new List<GameObject>();
@@ -313,7 +337,7 @@ public class MID360 : MonoBehaviour
             azRotation.y = RotationLoader.data[prevSecondInt][1] + (t0 - prevSecond) * gradient; // Assign zenith angle
         }
 
-        int start = (section - 1) * rayCount; // TODO
+        int start = (section - 1) * rayCount;
 
         NativeArray<Vector3>.Copy(rayGrid.directions, start, inputDirections, 0, rayCount);
 
@@ -327,7 +351,7 @@ public class MID360 : MonoBehaviour
             baseSeed = masterSeed,
             minDistance = minDistance,
             maxDistance = maxDistance,
-            lidarPosition = transform.position,
+            lidarPosition = transform.position + transform.InverseTransformDirection(originOffset),
             distanceNoises = distanceNoises,
             rayCommands = rayCommands
         };
@@ -336,7 +360,7 @@ public class MID360 : MonoBehaviour
         raycastHandle = RaycastCommand.ScheduleBatch(rayCommands, rayHits, 32, rayGenHandle);
 
         float t1 = Time.realtimeSinceStartup;
-        //Debug.Log($"Update excuted in {(t1 - t0) * 1000f:F3} ms");
+        Debug.Log($"Update excuted in {(t1 - t0) * 1000f:F3} ms");
     }
 
     void LateUpdate()
@@ -356,6 +380,7 @@ public class MID360 : MonoBehaviour
 
         var postJob = new PostRaycastProcessingJob
         {
+            invLidarRot = math.inverse(transform.rotation),
             hits = rayHits,
             commands = rayCommands,
             distanceNoises = distanceNoises,
@@ -389,9 +414,22 @@ public class MID360 : MonoBehaviour
             }
         }
 
+        if (pointLoggingOn)
+        {
+            string filePath = $"Assets/LidarPoints.csv";
+            using (System.IO.StreamWriter file = new System.IO.StreamWriter(filePath, true))
+            {
+                foreach (var point in acceptedPointsList)
+                {
+                    file.WriteLine($"{point.x},{point.y},{point.z}");
+                }
+            }
+            Debug.Log($"Logged {acceptedPointsList.Length} points to {filePath}");
+        }
+
         section = section % totalSections + 1;
         float t1 = Time.realtimeSinceStartup;
-        //Debug.Log($"LateUpdate executed in {(t1 - t0) * 1000f:F3} ms");
+        Debug.Log($"LateUpdate executed in {(t1 - t0) * 1000f:F3} ms");
     }
 
     void OnDestroy()
