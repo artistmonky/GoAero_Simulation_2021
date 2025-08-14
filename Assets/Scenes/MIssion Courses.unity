@@ -206,7 +206,7 @@ MonoBehaviour:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 347770780}
-  m_Enabled: 1
+  m_Enabled: 0
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 44399b8947853b945874cc853286b71a, type: 3}
   m_Name: 
@@ -442,7 +442,7 @@ MonoBehaviour:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 969944122}
-  m_Enabled: 1
+  m_Enabled: 0
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 730992e91eb9a0948816de72f2e03eab, type: 3}
   m_Name: 
@@ -565,6 +565,10 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   modelPath: 
+  originOffset:
+    x: 0
+    y: 0.17
+    z: 0
   azimuthSteps: 360
   elevationSteps: 40
   maxElevation: 55.22
@@ -584,6 +588,7 @@ MonoBehaviour:
   rayCount: 0
   totalSections: 0
   masterSeed: 0
+  pointLoggingOn: 0
   visualizeOn: 0
 --- !u!4 &1057290090
 Transform:
@@ -613,7 +618,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   imuUpdateRate: 200
-  upSamplingFactor: 0
+  imuDt: 0
   currentAcceleration: {x: 0, y: 0, z: 0}
   currentAngularRate: {x: 0, y: 0, z: 0}
 --- !u!54 &1057290092
@@ -703,7 +708,7 @@ MonoBehaviour:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1493170416}
-  m_Enabled: 1
+  m_Enabled: 0
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: a00b6bd361468ec419f61a093268261c, type: 3}
   m_Name: 
